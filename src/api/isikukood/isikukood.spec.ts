@@ -3,10 +3,17 @@ import { IsikukoodController } from './isikukood.controller';
 import { IsikukoodService } from './isikukood.service';
 import { BornSameDayCounter } from './born-same-day-counter.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { GenerationBody } from './dto/generation-body.dto';
+import {
+  IsGenderErrorMessage,
+  RightDateFormatErrorMessage,
+} from './validator/custom-validators';
+import { Repository } from 'typeorm';
 
 describe('IsikukoodController', () => {
   let controller: IsikukoodController;
   let service: IsikukoodService;
+  let repository: Repository<BornSameDayCounter>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -15,7 +22,10 @@ describe('IsikukoodController', () => {
         IsikukoodService,
         {
           provide: getRepositoryToken(BornSameDayCounter),
-          useValue: {},
+          useValue: {
+            findOne: jest.fn().mockResolvedValue(null),
+            save: jest.fn().mockResolvedValue({}),
+          },
         },
       ],
     }).compile();
@@ -68,6 +78,35 @@ describe('IsikukoodController', () => {
         },
       };
       expect(controller.checkIsikuKood(code)).toStrictEqual(expectedData);
+    });
+  });
+
+  describe('personal code generation', () => {
+    it('should return generated code', async () => {
+      const body: GenerationBody = {
+        gender: 'M',
+        birthDate: '11.02.2002',
+      };
+      expect(
+        await controller.generateIsikuKood(body),
+      ).toHaveProperty('code', '50202110012');
+    });
+
+    it('generated code should be valid', async () => {
+      const body = {
+        gender: 'M',
+        birthDate: '11.02.2002',
+      };
+      const expectedData = {
+        isValid: true,
+        data: {
+          gender: 'M',
+          birthDate: '11.02.2002',
+          serialNumber: '001',
+        },
+      };
+      const code = await controller.generateIsikuKood(body as GenerationBody);
+      expect(controller.checkIsikuKood(code.code)).toStrictEqual(expectedData);
     });
   });
 });

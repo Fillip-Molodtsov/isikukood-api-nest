@@ -9,17 +9,29 @@ import {
 } from './dto/validation-results.dto';
 import { isNumberString } from 'class-validator';
 import * as moment from 'moment';
+import { GenerationBody } from './dto/generation-body.dto';
+import { PossibleResult } from '../../shared/utils/generics';
 
 @Injectable()
 export class IsikukoodService {
   @InjectRepository(BornSameDayCounter)
   private readonly repository: Repository<BornSameDayCounter>;
 
-  public getBornSameDayCount(
-    id: number,
-  ): Promise<BornSameDayCounter | undefined> {
-    // @ts-ignore
-    return this.repository.findOne({ id });
+  public async generateCode(
+    input: GenerationBody,
+  ): Promise<PossibleResult<string>> {
+    const dataBasedPart = this.generateIsikukoodDataBasedPart(input);
+    const paddedCountPossible = await this.upsertBornSameDayCounter(
+      dataBasedPart,
+    );
+    if (paddedCountPossible.error) {
+      return { ok: null, error: paddedCountPossible.error };
+    }
+    const paddedCount = paddedCountPossible.ok;
+    const controlNumber = this.calculateControlNumber(
+      dataBasedPart + paddedCount,
+    );
+    return { ok: dataBasedPart + paddedCount + controlNumber };
   }
 
   public validateCode(codeUntrimmed: string): ValidationResult {
@@ -30,6 +42,43 @@ export class IsikukoodService {
       isValid,
       data: this.extractDataFromCode(code),
     };
+  }
+
+  private async upsertBornSameDayCounter(
+    dataBasedPart: string,
+  ): Promise<PossibleResult<string>> {
+    const counter = await this.repository.findOne({
+      where: { id: +dataBasedPart },
+    });
+    const count = counter ? counter.count + 1 : 1;
+    if (count === 1000) {
+      return { ok: null, error: 'Reached the limit of the day.' };
+    }
+    await this.repository.save({ id: +dataBasedPart, count });
+    return { ok: count.toString().padStart(3, '0') };
+  }
+
+  private generateIsikukoodDataBasedPart(input: GenerationBody): string {
+    const { gender, birthDate } = input;
+    const [day, month, year] = birthDate.split('.');
+    const yearFirst2Digits = year.substring(0, 2);
+    const yearLast2Digits = year.substring(2, 4);
+    let codeFirstDigit: string;
+    switch (yearFirst2Digits) {
+      case '18':
+        codeFirstDigit = gender === 'M' ? '1' : '2';
+        break;
+      case '19':
+        codeFirstDigit = gender === 'M' ? '3' : '4';
+        break;
+      case '20':
+        codeFirstDigit = gender === 'M' ? '5' : '6';
+        break;
+      case '21':
+        codeFirstDigit = gender === 'M' ? '7' : '8';
+        break;
+    }
+    return codeFirstDigit + yearLast2Digits + month + day;
   }
 
   private extractDataFromCode(code: string): IsikuKoodData {
@@ -62,6 +111,7 @@ export class IsikukoodService {
 
     return moment(new Date(year, month, +day)).format('DD.MM.YYYY');
   }
+
   /*
    * assumed that the code is already validated
    * */
@@ -84,6 +134,7 @@ export class IsikukoodService {
     }
     return res;
   }
+
   /*
   it should be a number
   the code should be 11-digit long
@@ -99,10 +150,14 @@ export class IsikukoodService {
   }
 
   private checkControlNumber(code: string): boolean {
+    const control = code.charAt(10);
+    const mod = this.calculateControlNumber(code);
+    return +control === mod;
+  }
+
+  private calculateControlNumber(code: string): number {
     const multiplier_1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 1];
     const multiplier_2 = [3, 4, 5, 6, 7, 8, 9, 1, 2, 3];
-
-    const control = code.charAt(10);
 
     let mod: number;
     let total = 0;
@@ -126,7 +181,6 @@ export class IsikukoodService {
         mod = 0;
       }
     }
-
-    return +control == mod;
+    return mod;
   }
 }
