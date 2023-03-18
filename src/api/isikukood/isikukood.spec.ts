@@ -4,13 +4,9 @@ import { IsikukoodService } from './isikukood.service';
 import { BornSameDayCounter } from './born-same-day-counter.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { GenerationBody } from './dto/generation-body.dto';
-import {
-  IsGenderErrorMessage,
-  RightDateFormatErrorMessage,
-} from './validator/custom-validators';
 import { Repository } from 'typeorm';
 
-describe('IsikukoodController', () => {
+describe('Isikukood implementation tests', () => {
   let controller: IsikukoodController;
   let service: IsikukoodService;
   let repository: Repository<BornSameDayCounter>;
